@@ -33,13 +33,38 @@ fn quick_export_ext(s: &Session) -> String {
     serde_json::to_value(s.prefs().export.quick_export_format).ok().and_then(|v| v.as_str().map(str::to_string)).unwrap_or_else(|| "png".into())
 }
 
-/// Where Quick Export writes the active document with no `path` given: `<name>.<format>` beside
-/// its file, when Export Preferences › Location is Same Folder and the document has a file.
+/// Where Quick Export writes the active document with no `path` given, when Export Preferences ›
+/// Location is a same-folder one and the document has a file: `<name>.<format>` beside it, or
+/// with Same Folder Numbered the first name that doesn't exist yet ([`numbered_target`]).
 pub fn quick_export_target(s: &Session) -> Option<String> {
-    let same = s.prefs().export.quick_export_location == crate::prefs::ExportLocation::SameFolder;
-    let dp = s.active()?.path.as_deref().filter(|_| same)?;
+    use crate::prefs::ExportLocation;
+    let location = s.prefs().export.quick_export_location;
+    let dp = s.active()?.path.as_deref().filter(|_| location != ExportLocation::Ask)?;
     let dir = std::path::Path::new(dp).parent().map(|d| d.to_string_lossy().into_owned()).unwrap_or_default();
-    Some(join(&dir, &format!("{}.{}", stem(dp), quick_export_ext(s))))
+    let (name, ext) = (stem(dp), quick_export_ext(s));
+    if location == ExportLocation::SameFolderNumbered {
+        return numbered_target(&dir, &name, &ext, |p| std::path::Path::new(p).exists());
+    }
+    Some(join(&dir, &format!("{name}.{ext}")))
+}
+
+/// Same Folder Numbered's name: `<stem>.<ext>` when `taken` says it is free, else the first free
+/// `<base>-N.<ext>`. An existing file is never replaced, the document's own file included, so
+/// exporting `photo.png` as PNG writes `photo-1.png` without asking (#6599 is about replacing).
+/// A stem already ending in `-N` (1 to 999, no leading zero) continues that count: `photo-1.png`
+/// re-exported gives `photo-2.png`, not `photo-1-1.png`. Dates and zero-padded counters
+/// (`2024-11-07`, `IMG-0042`) keep their whole name and get `-1`.
+pub(crate) fn numbered_target(dir: &str, stem: &str, ext: &str, taken: impl Fn(&str) -> bool) -> Option<String> {
+    let first = join(dir, &format!("{stem}.{ext}"));
+    if !taken(&first) {
+        return Some(first);
+    }
+    let counter = |n: &str| (1..=3).contains(&n.len()) && !n.starts_with('0') && n.bytes().all(|b| b.is_ascii_digit());
+    let (base, from) = match stem.rsplit_once('-') {
+        Some((base, n)) if !base.is_empty() && counter(n) => (base, n.parse::<u32>().ok()?.saturating_add(1)),
+        _ => (stem, 1),
+    };
+    (from..=u32::MAX).map(|n| join(dir, &format!("{base}-{n}.{ext}"))).find(|p| !taken(p))
 }
 
 /// Whether [`quick_export_target`] is the active document's own file (a document opened from

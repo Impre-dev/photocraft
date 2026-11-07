@@ -580,6 +580,63 @@ fn quick_export_never_replaces_the_documents_own_file_unasked() {
     s.execute("prefs.reset", json!({"path": "export"})).unwrap();
 }
 
+/// A `taken` test double for [`quick::numbered_target`]: the files `names` in folder `d`.
+fn taken_in(names: &[&str]) -> impl Fn(&str) -> bool + use<> {
+    let set: std::collections::HashSet<String> = names.iter().map(|n| format!("d/{n}")).collect();
+    move |p: &str| set.contains(p)
+}
+
+/// Same Folder Numbered's name: `<stem>.<ext>` when free, else the first free `<base>-N.<ext>`.
+/// A stem ending in a `-N` counter (1 to 999, no leading zero) continues it; a date, a
+/// zero-padded or longer number, a dash with nothing before it or a non-number keeps the stem.
+#[test]
+fn numbered_target_picks_the_first_free_name() {
+    let t = |stem: &str, names: &[&str]| quick::numbered_target("d", stem, "png", taken_in(names));
+    assert_eq!(t("photo", &[]).as_deref(), Some("d/photo.png"));
+    assert_eq!(t("photo", &["photo.png"]).as_deref(), Some("d/photo-1.png"));
+    assert_eq!(t("photo", &["photo.png", "photo-1.png", "photo-2.png"]).as_deref(), Some("d/photo-3.png"));
+    assert_eq!(t("photo", &["photo.png", "photo-2.png"]).as_deref(), Some("d/photo-1.png"), "the first free number");
+    assert_eq!(t("photo-1", &["photo-1.png"]).as_deref(), Some("d/photo-2.png"), "not photo-1-1.png");
+    assert_eq!(t("photo-1", &["photo-1.png", "photo-2.png"]).as_deref(), Some("d/photo-3.png"));
+    assert_eq!(t("photo-999", &["photo-999.png"]).as_deref(), Some("d/photo-1000.png"));
+    assert_eq!(t("photo-1", &[]).as_deref(), Some("d/photo-1.png"), "a free name is kept as it is");
+    for (stem, next) in [("IMG-0042", "IMG-0042-1"), ("scan-2024", "scan-2024-1"), ("2024-11-07", "2024-11-07-1"), ("-3", "-3-1"), ("photo-v2", "photo-v2-1")] {
+        assert_eq!(t(stem, &[&format!("{stem}.png")]), Some(format!("d/{next}.png")), "{stem}");
+    }
+}
+
+/// Same Folder Numbered writes beside the document without asking and never replaces a file:
+/// a document opened from photo.png exports photo-1.png, then photo-2.png, and the source is
+/// untouched (so #6599's question never comes up). Same Folder still replaces (test above).
+#[test]
+fn quick_export_same_folder_numbered_never_replaces_a_file() {
+    let dir = tmp("quick_numbered");
+    let mut s = session(8);
+    s.execute("file.export.exportPreferences", json!({"quickExportLocation": "sameFolderNumbered", "quickExportFormat": "png"})).unwrap();
+    assert_eq!(s.prefs().export.quick_export_location, crate::prefs::ExportLocation::SameFolderNumbered);
+    let own = format!("{dir}/photo.png");
+    std::fs::write(&own, b"original").unwrap();
+    s.active_mut().unwrap().path = Some(own.clone());
+    assert!(!quick_export_target_is_own_file(&s), "the document's own file is never the target");
+    for n in [1, 2] {
+        assert_eq!(s.execute("file.export.quickExport", json!({})).unwrap()["path"], json!(format!("{dir}/photo-{n}.png")));
+    }
+    assert_eq!(std::fs::read(&own).unwrap(), b"original", "the source is untouched");
+    assert_eq!(decode(&format!("{dir}/photo-1.png")).dimensions(), (64, 48));
+    // A PSD with no export yet gets the plain name first, then a number.
+    s.active_mut().unwrap().path = Some(format!("{dir}/art.psd"));
+    for name in ["art", "art-1"] {
+        assert_eq!(s.execute("file.export.quickExport", json!({})).unwrap()["path"], json!(format!("{dir}/{name}.png")));
+    }
+    // Re-exporting an earlier export continues its count.
+    s.active_mut().unwrap().path = Some(format!("{dir}/photo-2.png"));
+    assert_eq!(s.execute("file.export.quickExport", json!({})).unwrap()["path"], json!(format!("{dir}/photo-3.png")));
+    // An explicit path (the save dialog's answer) is written as given.
+    let named = format!("{dir}/chosen.png");
+    assert_eq!(s.execute("file.export.quickExport", json!({"path": named})).unwrap()["path"], json!(named));
+    s.execute("prefs.reset", json!({"path": "export"})).unwrap();
+}
+
 /// #8519: Quick Export as PNG renamed to `photo.jpeg` in the save dialog wrote PNG bytes under a
 /// JPEG name, which upload checks refuse. A Quick Export extension picks the format; another
 /// image extension is refused; no extension keeps Export Preferences' format.

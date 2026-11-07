@@ -88,7 +88,12 @@ choice!(LogDestination { Metadata = "metadata", TextFile = "textFile", Both = "b
 choice!(LogDetail { SessionsOnly = "sessionsOnly", Concise = "concise", Detailed = "detailed" } default Concise);
 choice!(Ask { Always = "always", Never = "never", Ask = "ask" } default Always);
 choice!(QuickExportFormat { Png = "png", Jpg = "jpg", Gif = "gif", Webp = "webp", Exr = "exr" } default Png);
-choice!(ExportLocation { Ask = "ask", SameFolder = "sameFolder" } default Ask);
+choice!(
+    /// Export Preferences › Location for Quick Export. Same Folder writes `<name>.<format>`
+    /// beside the document, replacing an earlier export; Same Folder Numbered never replaces a
+    /// file and writes the first free `<name>-N.<format>` instead.
+    ExportLocation { Ask = "ask", SameFolder = "sameFolder", SameFolderNumbered = "sameFolderNumbered" } default Ask
+);
 choice!(ExportMetadata { None = "none", Copyright = "copyright", All = "all" } default Copyright);
 choice!(
     /// Painting cursors: Standard (tool icon), Precise (crosshair), Normal Brush Tip (the 50%

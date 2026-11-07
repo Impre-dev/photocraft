@@ -1140,11 +1140,12 @@ pub fn quick_export_png(app: &mut PhotocraftApp) -> Result<Value, String> {
     if !cfg!(target_arch = "wasm32") {
         let prefs = app.session.prefs().export.clone();
         let fmt = serde_json::to_value(prefs.quick_export_format).ok().and_then(|v| v.as_str().map(str::to_string)).unwrap_or_else(|| "png".into());
-        let same = serde_json::to_value(prefs.quick_export_location).ok().is_some_and(|v| v == "sameFolder");
+        let same = prefs.quick_export_location != photocraft_engine::prefs::ExportLocation::Ask;
         let saved = app.session.active().is_some_and(|d| d.path.is_some());
         // Same Folder writes beside the document's file without asking, except when that would
         // replace the file itself (a document opened from photo.png): then the save dialog asks,
-        // so replacing it is the user's choice (#6599).
+        // so replacing it is the user's choice (#6599). Same Folder Numbered never targets an
+        // existing file, so it always writes without asking.
         if same && saved && !photocraft_engine::web_cmds::quick_export_target_is_own_file(&app.session) {
             return quick_export(app, json!({}));
         }

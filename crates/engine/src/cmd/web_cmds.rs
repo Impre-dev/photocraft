@@ -89,7 +89,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "Export Preferences…",
             &["File", "Export"],
             None,
-            r##"{"quickExportFormat":"png|jpg|gif|webp|exr"?,"quickExportLocation":"ask|sameFolder"?,"jpegQuality":1..100?,"webpLossless":bool?,"webpQuality":1..100?,"metadata":"none|copyright|all"?,"convertToSrgb":bool?} → {values}"##,
+            r##"{"quickExportFormat":"png|jpg|gif|webp|exr"?,"quickExportLocation":"ask|sameFolder|sameFolderNumbered"?,"jpegQuality":1..100?,"webpLossless":bool?,"webpQuality":1..100?,"metadata":"none|copyright|all"?,"convertToSrgb":bool?} → {values}"##,
             |_| Ok(()),
             export_preferences
         ),
@@ -98,7 +98,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "Quick Export",
             &[],
             None,
-            r##"{"path":str? (required unless Export Preferences › Location is "sameFolder" and the document is saved)} → {path, format, bytes, warnings}"##,
+            r##"{"path":str? (required unless Export Preferences › Location is "sameFolder" or "sameFolderNumbered" and the document is saved)} → {path, format, bytes, warnings}"##,
             native_doc,
             quick_export
         ),
